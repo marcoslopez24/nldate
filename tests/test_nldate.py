@@ -76,6 +76,12 @@ def test_unparseable_input_raises_value_error() -> None:
         parse("not a date", today=TODAY)
 
 
+def test_hello_world_raises_plain_value_error() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        parse("hello world", today=TODAY)
+    assert type(exc_info.value) is ValueError
+
+
 @pytest.mark.parametrize(
     ("text", "expected"),
     [

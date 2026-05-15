@@ -5,11 +5,6 @@ from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-
-class DateParseError(ValueError):
-    """Raised when a natural-language date cannot be parsed."""
-
-
 MONTHS = {
     "jan": 1,
     "january": 1,
@@ -145,7 +140,7 @@ def parse(s: str, today: date | None = None) -> date:
     text = _normalize(s)
     if not text:
         msg = "cannot parse an empty date expression"
-        raise DateParseError(msg)
+        raise ValueError(msg)
 
     simple = _parse_simple(text, reference)
     if simple is not None:
@@ -160,7 +155,7 @@ def parse(s: str, today: date | None = None) -> date:
         return absolute
 
     msg = f"could not parse date expression: {s!r}"
-    raise DateParseError(msg)
+    raise ValueError(msg)
 
 
 def _normalize(s: str) -> str:
@@ -376,7 +371,7 @@ def _parse_number(text: str) -> int:
         value = NUMBER_WORDS.get(word)
         if value is None:
             msg = f"unknown number word: {text!r}"
-            raise DateParseError(msg)
+            raise ValueError(msg)
         if value >= 100:
             current = max(current, 1) * value
         else:
