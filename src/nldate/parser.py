@@ -37,6 +37,8 @@ MONTHS = {
     "december": 12,
 }
 
+MONTH_NAMES = "|".join(sorted(MONTHS, key=len, reverse=True))
+
 WEEKDAYS = {
     "monday": 0,
     "mon": 0,
@@ -88,22 +90,36 @@ NUMBER_WORDS = {
     "seventy": 70,
     "eighty": 80,
     "ninety": 90,
+    "couple": 2,
+    "few": 3,
+    "hundred": 100,
+    "thousand": 1000,
 }
 
 UNIT_ALIASES = {
+    "d": "days",
     "day": "days",
     "days": "days",
+    "fortnight": "weeks",
+    "fortnights": "weeks",
+    "wk": "weeks",
+    "wks": "weeks",
     "week": "weeks",
     "weeks": "weeks",
+    "mo": "months",
+    "mos": "months",
     "month": "months",
     "months": "months",
+    "yr": "years",
+    "yrs": "years",
     "year": "years",
     "years": "years",
 }
 
 _NUMBER_PATTERN = r"\d+|[a-z]+(?:[- ][a-z]+)?"
 _DURATION_RE = re.compile(
-    rf"(?P<num>{_NUMBER_PATTERN})\s+(?P<unit>days?|weeks?|months?|years?)"
+    rf"(?P<num>{_NUMBER_PATTERN})\s+"
+    r"(?P<unit>fortnights?|days?|weeks?|months?|years?|wks?|mos?|yrs?|d)"
 )
 
 
@@ -149,20 +165,27 @@ def parse(s: str, today: date | None = None) -> date:
 
 def _normalize(s: str) -> str:
     text = s.strip().lower()
+    text = re.sub(r"\bnow\b", "today", text)
     text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
     text = re.sub(r"\b(\d+)(st|nd|rd|th)\b", r"\1", text)
-    text = re.sub(r"[,.]", "", text)
+    text = re.sub(r"[,.!?]", "", text)
+    text = re.sub(r"\bthe\b", " ", text)
+    text = re.sub(r"\bof\b", " ", text)
     text = re.sub(r"\s+", " ", text)
-    return text
+    return text.strip()
 
 
 def _parse_simple(text: str, today: date) -> date | None:
-    if text == "today":
+    if text in {"today", "this day"}:
         return today
     if text == "yesterday":
         return today - timedelta(days=1)
     if text == "tomorrow":
         return today + timedelta(days=1)
+    if text in {"day after tomorrow", "tomorrow after tomorrow"}:
+        return today + timedelta(days=2)
+    if text in {"day before yesterday", "yesterday before yesterday"}:
+        return today - timedelta(days=2)
     return None
 
 
@@ -179,9 +202,22 @@ def _parse_relative(text: str, today: date) -> date | None:
         (" before ", -1),
         (" after ", 1),
         (" from ", 1),
+        (" since ", 1),
     ):
         if marker in text:
             duration_text, base_text = text.split(marker, 1)
+            duration = _parse_duration(duration_text)
+            if duration is None:
+                continue
+            base = parse(base_text, today)
+            return _add_duration(base, duration.signed(sign))
+
+    for marker, sign in (
+        (" plus ", 1),
+        (" minus ", -1),
+    ):
+        if marker in text:
+            base_text, duration_text = text.split(marker, 1)
             duration = _parse_duration(duration_text)
             if duration is None:
                 continue
@@ -193,6 +229,13 @@ def _parse_relative(text: str, today: date) -> date | None:
         duration = _parse_duration(ago_match.group("duration"))
         if duration is not None:
             return _add_duration(today, duration.signed(-1))
+
+    earlier_later_match = re.fullmatch(r"(?P<duration>.+) (earlier|later)", text)
+    if earlier_later_match is not None:
+        duration = _parse_duration(earlier_later_match.group("duration"))
+        if duration is not None:
+            sign = -1 if earlier_later_match.group(2) == "earlier" else 1
+            return _add_duration(today, duration.signed(sign))
 
     in_match = re.fullmatch(r"in (?P<duration>.+)", text)
     if in_match is not None:
@@ -245,6 +288,12 @@ def _parse_absolute(text: str, today: date) -> date | None:
         iso_year, iso_month, iso_day = (int(part) for part in iso_match.groups())
         return date(iso_year, iso_month, iso_day)
 
+    numeric_dash_match = re.fullmatch(r"(\d{1,2})-(\d{1,2})(?:-(\d{2,4}))?", text)
+    if numeric_dash_match is not None:
+        month, day, year_text = numeric_dash_match.groups()
+        year = _year_from_text(year_text, today)
+        return date(year, int(month), int(day))
+
     slash_match = re.fullmatch(r"(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?", text)
     if slash_match is not None:
         month, day, year_text = slash_match.groups()
@@ -252,7 +301,8 @@ def _parse_absolute(text: str, today: date) -> date | None:
         return date(year, int(month), int(day))
 
     month_day = re.fullmatch(
-        r"([a-z]+) (\d{1,2})(?: (\d{4}))?|(\d{1,2}) ([a-z]+)(?: (\d{4}))?",
+        rf"({MONTH_NAMES}) (\d{{1,2}})(?: (\d{{2,4}}))?|"
+        rf"(\d{{1,2}}) ({MONTH_NAMES})(?: (\d{{2,4}}))?",
         text,
     )
     if month_day is not None:
@@ -284,6 +334,8 @@ def _year_from_text(year_text: str | None, today: date) -> int:
 
 def _parse_duration(text: str) -> Duration | None:
     cleaned = re.sub(r"\band\b", " ", text)
+    cleaned = re.sub(r"\ba\b", "one", cleaned)
+    cleaned = re.sub(r"\ban\b", "one", cleaned)
     matches = list(_DURATION_RE.finditer(cleaned))
     if not matches:
         return None
@@ -296,6 +348,8 @@ def _parse_duration(text: str) -> Duration | None:
     for match in matches:
         value = _parse_number(match.group("num"))
         unit = UNIT_ALIASES[match.group("unit")]
+        if match.group("unit") in {"fortnight", "fortnights"}:
+            value *= 2
         totals[unit] += value
 
     return Duration(**totals)
@@ -306,12 +360,17 @@ def _parse_number(text: str) -> int:
         return int(text)
     words = text.replace("-", " ").split()
     total = 0
+    current = 0
     for word in words:
         value = NUMBER_WORDS.get(word)
         if value is None:
             msg = f"unknown number word: {text!r}"
             raise DateParseError(msg)
-        total += value
+        if value >= 100:
+            current = max(current, 1) * value
+        else:
+            current += value
+    total += current
     return total
 
 

@@ -42,9 +42,7 @@ def test_slash_date() -> None:
 
 
 def test_days_before_absolute_date() -> None:
-    assert parse("5 days before December 1st, 2025", today=TODAY) == date(
-        2025, 11, 26
-    )
+    assert parse("5 days before December 1st, 2025", today=TODAY) == date(2025, 11, 26)
 
 
 def test_compound_duration_after_yesterday() -> None:
@@ -73,3 +71,25 @@ def test_unparseable_input_raises_value_error() -> None:
     with pytest.raises(ValueError):
         parse("not a date", today=TODAY)
 
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("now", TODAY),
+        ("the day after tomorrow", date(2026, 5, 16)),
+        ("the day before yesterday", date(2026, 5, 12)),
+        ("a week from now", date(2026, 5, 21)),
+        ("3 days later", date(2026, 5, 17)),
+        ("3 days earlier", date(2026, 5, 11)),
+        ("Dec. 1, 2025", date(2025, 12, 1)),
+        ("the 1st of December, 2025", date(2025, 12, 1)),
+        ("12-1-2025", date(2025, 12, 1)),
+        ("twenty-one days after today", date(2026, 6, 4)),
+        ("one hundred days after today", date(2026, 8, 22)),
+        ("a fortnight after today", date(2026, 5, 28)),
+        ("today plus 2 months", date(2026, 7, 14)),
+        ("today minus 10 days", date(2026, 5, 4)),
+    ],
+)
+def test_more_public_style_cases(text: str, expected: date) -> None:
+    assert parse(text, today=TODAY) == expected
