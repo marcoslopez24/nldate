@@ -166,6 +166,7 @@ def parse(s: str, today: date | None = None) -> date:
 def _normalize(s: str) -> str:
     text = s.strip().lower()
     text = re.sub(r"\bnow\b", "today", text)
+    text = re.sub(r"(?<=\d)\.(?=\d)", "/", text)
     text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
     text = re.sub(r"\b(\d+)(st|nd|rd|th)\b", r"\1", text)
     text = re.sub(r"[,.!?]", "", text)
@@ -283,22 +284,9 @@ def _parse_simple_unit_relative(text: str, today: date) -> date | None:
 
 
 def _parse_absolute(text: str, today: date) -> date | None:
-    iso_match = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", text)
-    if iso_match is not None:
-        iso_year, iso_month, iso_day = (int(part) for part in iso_match.groups())
-        return date(iso_year, iso_month, iso_day)
-
-    numeric_dash_match = re.fullmatch(r"(\d{1,2})-(\d{1,2})(?:-(\d{2,4}))?", text)
-    if numeric_dash_match is not None:
-        month, day, year_text = numeric_dash_match.groups()
-        year = _year_from_text(year_text, today)
-        return date(year, int(month), int(day))
-
-    slash_match = re.fullmatch(r"(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?", text)
-    if slash_match is not None:
-        month, day, year_text = slash_match.groups()
-        year = _year_from_text(year_text, today)
-        return date(year, int(month), int(day))
+    numeric = _parse_numeric_date(text, today)
+    if numeric is not None:
+        return numeric
 
     month_day = re.fullmatch(
         rf"({MONTH_NAMES}) (\d{{1,2}})(?: (\d{{2,4}}))?|"
@@ -321,6 +309,29 @@ def _parse_absolute(text: str, today: date) -> date | None:
         return date(year, month, int(day_text))
 
     return None
+
+
+def _parse_numeric_date(text: str, today: date) -> date | None:
+    compact_match = re.fullmatch(r"(\d{4})(\d{2})(\d{2})", text)
+    if compact_match is not None:
+        year, month, day = (int(part) for part in compact_match.groups())
+        return date(year, month, day)
+
+    separated_match = re.fullmatch(
+        r"(\d{1,4})([-/])(\d{1,2})(?:\2(\d{1,4}))?",
+        text,
+    )
+    if separated_match is None:
+        return None
+
+    first_text, _separator, second_text, third_text = separated_match.groups()
+    if len(first_text) == 4:
+        if third_text is None:
+            return None
+        return date(int(first_text), int(second_text), int(third_text))
+
+    year = _year_from_text(third_text, today)
+    return date(year, int(first_text), int(second_text))
 
 
 def _year_from_text(year_text: str | None, today: date) -> int:

@@ -41,6 +41,10 @@ def test_slash_date() -> None:
     assert parse("12/1/2025", today=TODAY) == date(2025, 12, 1)
 
 
+def test_year_first_slash_date() -> None:
+    assert parse("2025/12/04", today=TODAY) == date(2025, 12, 4)
+
+
 def test_days_before_absolute_date() -> None:
     assert parse("5 days before December 1st, 2025", today=TODAY) == date(2025, 11, 26)
 
@@ -84,6 +88,8 @@ def test_unparseable_input_raises_value_error() -> None:
         ("Dec. 1, 2025", date(2025, 12, 1)),
         ("the 1st of December, 2025", date(2025, 12, 1)),
         ("12-1-2025", date(2025, 12, 1)),
+        ("2025.12.04", date(2025, 12, 4)),
+        ("20251204", date(2025, 12, 4)),
         ("twenty-one days after today", date(2026, 6, 4)),
         ("one hundred days after today", date(2026, 8, 22)),
         ("a fortnight after today", date(2026, 5, 28)),
